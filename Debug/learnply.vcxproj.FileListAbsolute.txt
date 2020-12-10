@@ -1,0 +1,2 @@
+C:\Education\CS453\Project3\Debug\learnply.exe
+C:\Education\CS453\Project3\Debug\learnply.pdb
