@@ -85,24 +85,14 @@ void display_selected_quad(Polyhedron* poly);
 #include "StreamlinePlacementAlg.cpp"
 
 
-float min_x = FLT_MAX, min_y = FLT_MAX, max_x = FLT_MIN, max_y = FLT_MIN;
-const int subDivisions = 5;
-bool streamlinesOn = false, singularities = false;
-bool foundStreamlines = false, foundSingleStreamline = false,  foundSingularities = false;
 
-StreamlineSet streamlines;
-PolyLine SingleStreamline;
 std::vector<Vertex*> Singularities;
 
-int recursiveDepth = 200;
-void placeStreamlinesGrid();
-void drawLineRecursive(Vertex* v, int, bool forward, int, bool);
 void findSingularities();
 void extractSingularitiesQuad(Quad*);
 void classifySingularity(Quad*, Vertex*);
 void drawSingularities();
-Vertex* getVertexAt(float xpos, float ypos);
-Vertex* RKGetNextVertex(Vertex* initial, bool forward);
+
 
 
 
@@ -224,30 +214,17 @@ int main(int argc, char* argv[])
 	poly = new Polyhedron(this_file);
 	fclose(this_file);
 	
-	//find the max and min values of all scalars in the data set
-	for (int i = 0; i < poly->nverts; i++) {
-		Vertex* v = poly->vlist[i];
-		if (v->x < min_x)
-			min_x = v->x;
-		if (v->x > max_x)
-			max_x = v->x;
-		if (v->y < min_y)
-			min_y = v->y;
-		if (v->y > max_y)
-			max_y = v->y;
-	}
+	
 
 	//~~~~ FINAL PROJECT - STREAMLINE OPTIMIZATION ~~~~
 
 	//set up streamlineset
 	streamlines.resize((subDivisions) * (subDivisions));
-	
 
 	//Create a set of streamlines placed on a grid
 	placeStreamlinesGrid();
 
 	//send them to the algorithm for optimization
-	int f = streamlines.at(4).p->size();
 	optimizeStreamlines(&streamlines);
 
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -576,8 +553,8 @@ void display_selected_vertex(Polyhedron* this_poly)
 	
 	if (foundSingleStreamline == false) {	
 		SingleStreamline.clear();
-		drawLineRecursive(temp_v, -1, true, recursiveDepth, true);
-		drawLineRecursive(temp_v, -1, false, recursiveDepth, true);
+		drawLineRecursive(temp_v, &SingleStreamline, true, streamLength);
+		drawLineRecursive(temp_v, &SingleStreamline, false, streamLength);
 		foundSingleStreamline = true;
 	}
 	
@@ -585,113 +562,7 @@ void display_selected_vertex(Polyhedron* this_poly)
 
 }
 
-void placeStreamlinesGrid() {
-	
-	float x, y;
-	for (int i = 0; i < subDivisions; i++) {
-		x = min_x + (1+i) *( 1. / ((float)subDivisions +2)) * (max_x - min_x);
-		for (int j = 0; j < subDivisions; j++) {
-			y = min_y + (1+j) * (1. / ((float)subDivisions +2))* (max_y - min_y);
-			Vertex* v = getVertexAt(x, y); 
-			streamlines.at(i * subDivisions + j).length = recursiveDepth * 2;
-			streamlines.at(i * subDivisions + j).seed.x = v->x;
-			streamlines.at(i * subDivisions + j).seed.y = v->y;
-			drawLineRecursive(v, i * subDivisions + j, true, recursiveDepth, false);
-			drawLineRecursive(v, i * subDivisions + j, false, recursiveDepth, false);
-		}
-	}
-	foundStreamlines = true;
 
-}
-
-void drawLineRecursive(Vertex* v, int lineIndex, bool forward, int depthRemaining, bool single) {
-
-	if (depthRemaining <= 0)
-		return;
-	Vertex* next_v;
-
-	//Get the estimate of the next vertex from the Runge-Kutta algorithm
-	if (forward) 
-		next_v = RKGetNextVertex(v, true);
-	else 
-		next_v = RKGetNextVertex(v, false);
-	
-	//if the next point would go out of the data set, return 
-	if (next_v == nullptr)
-		return;
-
-	//add the line segment to the streamline set
-	LineSegment newLine(v->x, v->y, 0, next_v->x, next_v->y, 0);
-
-	//if this streamline is going in the backward direction, reverse the start and end
-	if (forward == false) {
-		newLine.start = { next_v->x, next_v->y, 0 };
-		newLine.end = { v->x, v->y, 0 };
-	}
-	if (lineIndex == -1)
-		SingleStreamline.push_back(newLine);
-	else
-		streamlines.at(lineIndex).p->push_back(newLine);
-
-
-	//continue the line from the next point
-	drawLineRecursive(next_v, lineIndex, forward, --depthRemaining, single);
-
-}
-
-
-Vertex* RKGetNextVertex(Vertex* initial, bool forward) {
-
-	if ((float)initial->vx == 0 && (float)initial->vy == 0)
-		return nullptr;
-
-	//do Runge Kutta Method
-	//time step will be found by using the magnitude of the vector at the point
-	//ignore t? just use the x and y, increase them both as you go through the R-K method
-	Vertex* v;
-	
-	int direction;
-	direction = (forward ? 1 : -1);								//if forward = true, use the normal vectors, otherwise reverse them
-	double timestep = .2 * direction , timeStepProportion;		//I think this isn't enough to make the forward/back work right, revisit later
-	double nextx, nexty;
-
-	
-	icVector2 vec1(initial->vx, initial->vy);
-	normalize(vec1);
-
-	nextx = initial->x + timestep / 2.0 * vec1.x;
-	nexty = initial->y + timestep / 2.0 * vec1.y;
-	v = getVertexAt(nextx, nexty);
-	if (v == nullptr)
-		return nullptr;
-	icVector2 vec2(v->vx, v->vy);
-	normalize(vec2);
-
-	nextx = initial->x + timestep / 2.0 * vec2.x;
-	nexty = initial->y + timestep / 2.0 * vec2.y;
-	v = getVertexAt(nextx, nexty);
-	if (v == nullptr)
-		return nullptr;
-	icVector2 vec3(v->vx, v->vy);
-	normalize(vec3);
-
-	nextx = initial->x + timestep * vec3.x;
-	nexty = initial->y + timestep * vec3.y;
-	v = getVertexAt(nextx, nexty);
-	if (v == nullptr)
-		return nullptr;
-	icVector2 vec4(v->vx, v->vy);
-	normalize(vec4);
-
-	Vertex* next_v;
-	float finaly = initial->y + 1.0 / 6.0 * timestep * (vec1.y + 2.0 * vec2.y + 2.0 * vec3.y + vec4.y);
-	float finalx = initial->x + 1.0 / 6.0 * timestep * (vec1.x + 2.0 * vec2.x + 2.0 * vec3.x + vec4.x);
-	//printf("This x: %f This y: %f \nNext x: %f Next y: %f \n\n", initial->x, initial->y, finalx, finaly);
-	if ((float)initial->x == finalx && (float)initial->y == finaly)
-		return nullptr;
-	return getVertexAt(finalx, finaly);
-
-}
 
 void findSingularities() {
 
@@ -839,89 +710,6 @@ void drawSingularities() {
 	for (auto v : Singularities) {
 		drawDot(v->x, v->y, 0, .2, v->R, v->G, v->B);
 	}
-}
-
-
-
-Vertex* getVertexAt(float xpos, float ypos) {
-	
-	if (xpos < min_x || xpos > max_x || ypos < min_y || ypos > max_y)
-		return nullptr;
-
-	Quad* thisFace;
-	bool found = false;
-	float minx , miny, maxx, maxy;
-	int i;
-	for (i = 0; i < poly->nquads; i++) {
-		minx = miny = FLT_MAX;
-		maxx = maxy = FLT_MIN;
-		
-		//check all the points for x and y to see if the point lies within this face
-		for (int j = 0; j < 4; j++) {
-			Vertex* thisVert = poly->qlist[i]->verts[j];
-			if (thisVert->x < minx)
-				minx = thisVert->x;
-			if (thisVert->x > maxx)
-				maxx = thisVert->x;
-			if (thisVert->y < miny)
-				miny = thisVert->y;
-			if (thisVert->y > maxy)
-				maxy = thisVert->y;
-		}
-
-		if (xpos >= minx && xpos <= maxx && ypos >= miny && ypos <= maxy) {
-			//found correct face that contains this point
-			thisFace = poly->qlist[i];
-			found = true;
-			goto next;
-		}
-
-	}
-	next:
-	if (found) {
-		//now interpolate on vx, vy, and vz(?)
-		/*printf("test point at %f , %f", xpos, ypos);
-		printf("\nFound point in face %d:\n", i);
-		printf("   vert 0: x,y: %f, %f , vx,vy: %f, %f \n", thisFace->verts[0]->x, thisFace->verts[0]->y, thisFace->verts[0]->vx, thisFace->verts[0]->vy);
-		printf("   vert 1: x,y: %f, %f , vx,vy: %f, %f\n", thisFace->verts[1]->x, thisFace->verts[1]->y, thisFace->verts[1]->vx, thisFace->verts[1]->vy);
-		printf("   vert 2: x,y: %f, %f , vx,vy: %f, %f\n", thisFace->verts[2]->x, thisFace->verts[2]->y, thisFace->verts[2]->vx, thisFace->verts[2]->vy);
-		printf("   vert 3: x,y: %f, %f , vx,vy: %f, %f\n", thisFace->verts[3]->x, thisFace->verts[3]->y, thisFace->verts[3]->vx, thisFace->verts[3]->vy);
-		//not sure if important, but vert 0 is max in x and y, 2 is min
-
-		/*
-
-			1 - 0
-			|   |
-			2 - 3
-
-		*/
-
-
-
-		//float vx = ()
-		//interpolate in x direction first:
-		float xLower = (maxx - xpos) / (maxx - minx) * thisFace->verts[2]->vx + (xpos - minx) / (maxx - minx) * thisFace->verts[3]->vx;
-		float xUpper = (maxx - xpos) / (maxx - minx) * thisFace->verts[1]->vx + (xpos - minx) / (maxx - minx) * thisFace->verts[0]->vx;
-
-		float yLower = (maxx - xpos) / (maxx - minx) * thisFace->verts[2]->vy + (xpos - minx) / (maxx - minx) * thisFace->verts[3]->vy;
-		float yUpper = (maxx - xpos) / (maxx - minx) * thisFace->verts[1]->vy + (xpos - minx) / (maxx - minx) * thisFace->verts[0]->vy;
-
-		//now interpolate in the y direction:
-
-
-		float vxFinal = (maxy - ypos) / (maxy - miny) * xLower + (ypos - miny) / (maxy - miny) * xUpper;
-		float vyFinal = (maxy - ypos) / (maxy - miny) * yLower + (ypos - miny) / (maxy - miny) * yUpper;
-
-		//printf("\nestimation of the deltas at %f , %f\n", xpos, ypos);
-		//printf("vx: %f, vy: %f", vxFinal, vyFinal);
-
-		Vertex* v;
-		v = new Vertex((double)xpos, (double)ypos, 0);
-		v->vx = vxFinal;
-		v->vy = vyFinal;
-		return v;
-	}
-	return nullptr;
 }
 
 
