@@ -19,12 +19,14 @@ float			(*test)[resolution][resolution] = &buffer2;
 float			(*swap)[resolution][resolution];
 
 //image energy variables
-#define			sufficientNumFails 200
+#define			sufficientNumFails 1000
 #define			upperEnergyLimit 50
-float			targetEnergy = 5;
-float			radiusOfInfluence = 1;
+float			targetCellEnergy = .75;
+float			targetEnergy = targetCellEnergy* resolution* resolution;
+
+float			radiusOfInfluence = 2;
 double			minXY = -10., maxXY = 10.;			//taking for granted that all the ply files have the same bounds
-const int		subDivisions = 5;
+const int		subDivisions = 10;
 
 //streamline variables
 StreamlineSet	streamlines;
@@ -32,7 +34,7 @@ StreamlineSet	testLines;
 PolyLine		SingleStreamline;
 bool			streamlinesOn = false, singularities = false;
 bool			foundStreamlines = false, foundSingleStreamline = false, foundSingularities = false;
-int				streamLength = 50;
+int				streamLength = 25;
 
 //operation variables
 #define randMaxMovement 1
@@ -48,9 +50,12 @@ void swapBuffers();
 void visualizeImage(float[][resolution]);
 bool areStreamlinesSatisfactory(int, float[][resolution]);
 
-//operations
+//operation functions
 //note: all operations implicitly operate on the test image, which is compared after the operation is complete
-void tryAdjustRandomSeed(int);
+bool doRandomOperation(StreamlineSet* set);
+bool wasSuccess();
+bool tryAdjustRandomSeed(int);
+bool tryRandomPlacement(int);
 
 
 
@@ -75,17 +80,15 @@ void optimizeStreamlines(StreamlineSet* set) {
 		//printf("This image has a normalized energy value of %f", normalizedEnergy);
 
 	srand(time(NULL));
+	bool success;
 	int numFails = 0;
-	float baseEnergy, testEnergy;
 	while (areStreamlinesSatisfactory(numFails, *image) == false) {
 		//randomly select an operation to perform on the streamlines
 		//but for now move a random seed point
-		int randStreamline = rand() % set->size();
-		copyImage(*image, *test);
-		tryAdjustRandomSeed(randStreamline);
-		
-		
-		
+		success = doRandomOperation(set);
+		if (!success)
+			numFails++;
+	
 	}
 }
 
@@ -123,8 +126,8 @@ void streamlineAlterImage(PolyLine* pl, float img[][resolution], bool addInfluen
 							img[gridy + j][gridx + k] -= 2 * (r * r * r) - 3 * (r * r) + 1;		//or remove it
 
 					}
-					//if (img[gridy + j][gridx + k] > 1)										//cap each value to 1
-						//img[gridy + j][gridx + k] = 1;
+					if (img[gridy + j][gridx + k] > 1)										//cap each value to 10
+						img[gridy + j][gridx + k] = 1;
 				}
 			}
 		}
@@ -150,7 +153,7 @@ void visualizeImage(float img[][resolution]){
 		for (int j = 0; j < resolution; j++){
 			if (img[i][j] == 0)
 				printf(".");
-			else if (img[i][j] >= 30)
+			else if (img[i][j] >= .8)
 				printf("#");
 			else
 				printf("\"");
@@ -165,7 +168,7 @@ float getEnergyFromImage(float img[][resolution]) {
 	
 	for (int i = 0; i < resolution; i++) {
 		for (int j = 0; j < resolution; j++) {
-			runningTotal += (img[i][j] - targetEnergy) * (img[i][j] - targetEnergy);
+			runningTotal += (img[i][j]  - targetCellEnergy) * (img[i][j] - targetCellEnergy);
 		}
 	}
 	return runningTotal;
@@ -173,7 +176,7 @@ float getEnergyFromImage(float img[][resolution]) {
 
 
 bool areStreamlinesSatisfactory(int numFails, float img[][resolution]) {
-	if (numFails > sufficientNumFails || getEnergyFromImage(img) < targetEnergy * 1.2)
+	if (numFails > sufficientNumFails || (getEnergyFromImage(img) < targetEnergy * 1.01 && getEnergyFromImage(img) > targetEnergy * .99))
 		return true;
 	return false;
 }
@@ -188,9 +191,38 @@ void swapBuffers() {
 
 //operation functions
 
-void tryAdjustRandomSeed(int sl) {
 
-	streamlineAlterImage(streamlines.at(sl).p,  *test,  false);			//first remove the streamline's influence on the image
+bool doRandomOperation(StreamlineSet *set) {
+	int randStreamline = rand() % set->size();
+	copyImage(*image, *test);
+
+	int randomOperation = rand() % 2;
+
+	if (randomOperation == 0)
+		return tryAdjustRandomSeed(randStreamline);
+	else
+		return tryRandomPlacement(randStreamline);
+}
+
+
+bool wasSuccess() {
+
+	float baseEnergy = getEnergyFromImage(*image);
+	float testEnergy = getEnergyFromImage(*test);
+
+	//if that change was an improvement (i.e it was closer to the ideal energy value)
+	if (abs(testEnergy - targetEnergy) < abs(baseEnergy - targetEnergy)) {
+		swapBuffers();
+		printf("\n\nEnergy improved\nOld energy:		%f\nNew Energy:		%f", baseEnergy, testEnergy);
+		return true;
+	}
+	return false;
+}
+
+
+bool tryAdjustRandomSeed(int sl) {
+
+	//generate random displacement
 	//make sure to clamp the value into the min-max xy range with min and max
 	float newRandX =	std::min( maxXY , 
 						std::max( minXY , 
@@ -199,28 +231,54 @@ void tryAdjustRandomSeed(int sl) {
 						std::max(minXY, 
 							streamlines.at(sl).seed.y + (rand() % 100) / 100 * (randMaxMovement * 2) - randMaxMovement));
 	Vertex* v = getVertexAt(newRandX, newRandY);
+	
+	
+	//generate the new altered line
 	Streamline alteredLine;
 	alteredLine.seed.x = newRandX;
 	alteredLine.seed.y = newRandY;
 	alteredLine.length = streamLength * 2;
 	alteredLine.p = new PolyLine(streamLength * 2);
 	drawLineRecursive(v, alteredLine.p, true, streamLength * 2);
+	float before = getEnergyFromImage(*test);
+	streamlineAlterImage(streamlines.at(sl).p, *test, false);			//remove the original streamline's influence on the image
+	float after = getEnergyFromImage(*test); 
+	streamlineAlterImage(alteredLine.p, *test, true);					//and add the influence of the new line to the test image
 
-	//finally add the influence of the new line to the test image
-	streamlineAlterImage(alteredLine.p, *test, true);
-
-	float baseEnergy = getEnergyFromImage(*image);
-	float testEnergy = getEnergyFromImage(*test);
-	printf("Old line placement resulted in %f energy, new line placement resulted in %f energy\n", baseEnergy, testEnergy);
-
-	//if that change was an improvement
-	if (testEnergy < baseEnergy) {
-		swapBuffers();
-		streamlines.at(sl) = alteredLine;
+	if(wasSuccess()){
+		streamlines.at(sl) = alteredLine;			//is this working?
+		printf(" - successfully moved line\n");
+		return true;							//success!
 	}
+	return false;
 	
 }
 
+
+bool tryRandomPlacement(int sl) {
+	//pick a new random position
+	float newRandX = minXY + (rand() % 100) / 100. * (maxXY - minXY);
+	float newRandY = minXY + (rand() % 100) / 100. * (maxXY - minXY);
+	Vertex* v = getVertexAt(newRandX, newRandY);
+	
+	//create a streamline at that point
+	Streamline newLine;
+	newLine.seed.x = newRandX;
+	newLine.seed.y = newRandY;
+	newLine.length = streamLength * 2;
+	newLine.p = new PolyLine(streamLength * 2);
+	drawLineRecursive(v, newLine.p, true, streamLength * 2);
+
+	streamlineAlterImage(newLine.p, *test, true);					//add the influence of the new line to the test image
+
+	if(wasSuccess()){
+		printf(" - Successfully created new line");
+		streamlines.push_back(newLine);
+		return true;							//success!
+	}
+	return false;
+	
+}
 
 
 //******************  Streamline placement functions *********************
