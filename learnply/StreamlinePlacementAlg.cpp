@@ -44,12 +44,14 @@ void streamlinesToImage(StreamlineSet*, float[][resolution]);
 void streamlineAlterImage(PolyLine*, float[][resolution], bool);
 float getEnergyFromImage(float[][resolution]);
 void copyImage(float[][resolution], float[][resolution]);
+void swapBuffers();
 void visualizeImage(float[][resolution]);
 bool areStreamlinesSatisfactory(int, float[][resolution]);
 
 //operations
 //note: all operations implicitly operate on the test image, which is compared after the operation is complete
-void adjustRandomSeed(int);
+void tryAdjustRandomSeed(int);
+
 
 
 //streamline functions
@@ -80,18 +82,10 @@ void optimizeStreamlines(StreamlineSet* set) {
 		//but for now move a random seed point
 		int randStreamline = rand() % set->size();
 		copyImage(*image, *test);
-		adjustRandomSeed(randStreamline);
+		tryAdjustRandomSeed(randStreamline);
 		
-		baseEnergy = getEnergyFromImage(*image);
-		testEnergy = getEnergyFromImage(*test);
-		printf("Old line placement resulted in %f energy, new line placement resulted in %f energy\n", baseEnergy, testEnergy);
 		
-		//if this is an improvement, sway the buffers
-		if (testEnergy < baseEnergy) {
-			swap = image;
-			image = test;
-			test = swap;
-		}
+		
 	}
 }
 
@@ -184,16 +178,26 @@ bool areStreamlinesSatisfactory(int numFails, float img[][resolution]) {
 	return false;
 }
 
+void swapBuffers() {
+	swap = image;
+	image = test;
+	test = swap;
 
+}
 
 
 //operation functions
 
-void adjustRandomSeed(int sl) {
+void tryAdjustRandomSeed(int sl) {
 
 	streamlineAlterImage(streamlines.at(sl).p,  *test,  false);			//first remove the streamline's influence on the image
-	float newRandX = streamlines.at(sl).seed.x + (rand() % 100) / 100 * (randMaxMovement * 2) - randMaxMovement;
-	float newRandY = streamlines.at(sl).seed.y + (rand() % 100) / 100 * (randMaxMovement * 2) - randMaxMovement;
+	//make sure to clamp the value into the min-max xy range with min and max
+	float newRandX =	std::min( maxXY , 
+						std::max( minXY , 
+							streamlines.at(sl).seed.x + (rand() % 100) / 100 * (randMaxMovement * 2) - randMaxMovement));
+	float newRandY =	std::min(maxXY,
+						std::max(minXY, 
+							streamlines.at(sl).seed.y + (rand() % 100) / 100 * (randMaxMovement * 2) - randMaxMovement));
 	Vertex* v = getVertexAt(newRandX, newRandY);
 	Streamline alteredLine;
 	alteredLine.seed.x = newRandX;
@@ -202,8 +206,18 @@ void adjustRandomSeed(int sl) {
 	alteredLine.p = new PolyLine(streamLength * 2);
 	drawLineRecursive(v, alteredLine.p, true, streamLength * 2);
 
-	//finally add the influence of the new line to the test image and return
+	//finally add the influence of the new line to the test image
 	streamlineAlterImage(alteredLine.p, *test, true);
+
+	float baseEnergy = getEnergyFromImage(*image);
+	float testEnergy = getEnergyFromImage(*test);
+	printf("Old line placement resulted in %f energy, new line placement resulted in %f energy\n", baseEnergy, testEnergy);
+
+	//if that change was an improvement
+	if (testEnergy < baseEnergy) {
+		swapBuffers();
+		streamlines.at(sl) = alteredLine;
+	}
 	
 }
 
