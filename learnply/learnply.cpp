@@ -80,7 +80,9 @@ void display_selected_quad(Polyhedron* poly);
 
 
 
-//*************** Project 3 *************** 
+//*************** Final Project *************** 
+#include "Streamline.h"
+#include "StreamlinePlacementAlg.cpp"
 
 
 float min_x = FLT_MAX, min_y = FLT_MAX, max_x = FLT_MIN, max_y = FLT_MIN;
