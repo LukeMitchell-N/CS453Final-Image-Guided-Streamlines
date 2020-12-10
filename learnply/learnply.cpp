@@ -86,6 +86,7 @@ void display_selected_quad(Polyhedron* poly);
 
 
 float min_x = FLT_MAX, min_y = FLT_MAX, max_x = FLT_MIN, max_y = FLT_MIN;
+const int subDivisions = 5;
 bool streamlinesOn = false, singularities = false;
 bool foundStreamlines = false, foundSingleStreamline = false,  foundSingularities = false;
 
@@ -95,7 +96,7 @@ std::vector<Vertex*> Singularities;
 
 int recursiveDepth = 200;
 void placeStreamlinesGrid();
-void drawLineRecursive(Vertex* v, Streamline *, bool forward, int, bool);
+void drawLineRecursive(Vertex* v, int, bool forward, int, bool);
 void findSingularities();
 void extractSingularitiesQuad(Quad*);
 void classifySingularity(Quad*, Vertex*);
@@ -238,10 +239,15 @@ int main(int argc, char* argv[])
 
 	//~~~~ FINAL PROJECT - STREAMLINE OPTIMIZATION ~~~~
 
+	//set up streamlineset
+	streamlines.resize((subDivisions) * (subDivisions));
+	
+
 	//Create a set of streamlines placed on a grid
 	placeStreamlinesGrid();
 
 	//send them to the algorithm for optimization
+	int f = streamlines.at(4).p->size();
 	optimizeStreamlines(&streamlines);
 
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -570,8 +576,8 @@ void display_selected_vertex(Polyhedron* this_poly)
 	
 	if (foundSingleStreamline == false) {	
 		SingleStreamline.clear();
-		drawLineRecursive(temp_v, nullptr, true, recursiveDepth, true);
-		drawLineRecursive(temp_v, nullptr, false, recursiveDepth, true);
+		drawLineRecursive(temp_v, -1, true, recursiveDepth, true);
+		drawLineRecursive(temp_v, -1, false, recursiveDepth, true);
 		foundSingleStreamline = true;
 	}
 	
@@ -580,27 +586,25 @@ void display_selected_vertex(Polyhedron* this_poly)
 }
 
 void placeStreamlinesGrid() {
-	int subdivisions = 5;
+	
 	float x, y;
-	for (int i = 0; i < subdivisions + 1; i++) {
-		x = min_x + (float)i / (float)subdivisions * (max_x - min_x);
-		for (int j = 0; j < subdivisions + 1; j++) {
-			y = min_y + (float)j / (float)subdivisions * (max_y - min_y);
+	for (int i = 0; i < subDivisions; i++) {
+		x = min_x + (1+i) *( 1. / ((float)subDivisions +2)) * (max_x - min_x);
+		for (int j = 0; j < subDivisions; j++) {
+			y = min_y + (1+j) * (1. / ((float)subDivisions +2))* (max_y - min_y);
 			Vertex* v = getVertexAt(x, y); 
-			Streamline thisLine;
-			thisLine.length = recursiveDepth * 2;
-			thisLine.seed.x = v->x;
-			thisLine.seed.y = v->y;
-			drawLineRecursive(v, &thisLine, true, recursiveDepth, false);
-			drawLineRecursive(v, &thisLine, false, recursiveDepth, false);
+			streamlines.at(i * subDivisions + j).length = recursiveDepth * 2;
+			streamlines.at(i * subDivisions + j).seed.x = v->x;
+			streamlines.at(i * subDivisions + j).seed.y = v->y;
+			drawLineRecursive(v, i * subDivisions + j, true, recursiveDepth, false);
+			drawLineRecursive(v, i * subDivisions + j, false, recursiveDepth, false);
 		}
 	}
 	foundStreamlines = true;
 
 }
 
-
-void drawLineRecursive(Vertex* v, Streamline *s, bool forward, int depthRemaining, bool single) {
+void drawLineRecursive(Vertex* v, int lineIndex, bool forward, int depthRemaining, bool single) {
 
 	if (depthRemaining <= 0)
 		return;
@@ -618,13 +622,20 @@ void drawLineRecursive(Vertex* v, Streamline *s, bool forward, int depthRemainin
 
 	//add the line segment to the streamline set
 	LineSegment newLine(v->x, v->y, 0, next_v->x, next_v->y, 0);
-	if (single)
+
+	//if this streamline is going in the backward direction, reverse the start and end
+	if (forward == false) {
+		newLine.start = { next_v->x, next_v->y, 0 };
+		newLine.end = { v->x, v->y, 0 };
+	}
+	if (lineIndex == -1)
 		SingleStreamline.push_back(newLine);
 	else
-		s->p.push_back(newLine);
+		streamlines.at(lineIndex).p->push_back(newLine);
+
 
 	//continue the line from the next point
-	drawLineRecursive(next_v, s, forward, --depthRemaining, single);
+	drawLineRecursive(next_v, lineIndex, forward, --depthRemaining, single);
 
 }
 
@@ -1317,7 +1328,7 @@ void display(void)
 
 	if (streamlinesOn) {
 		for (int i = 0; i < streamlines.size(); i++) {
-			drawPolyline(streamlines[i].p, 1.5, 1, 0, 0);
+			drawPolyline(*streamlines[i].p, 1.5, 1, 0, 0);
 		}
 	}
 		

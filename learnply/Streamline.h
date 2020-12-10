@@ -8,7 +8,10 @@ class Streamline {
 public:
 	icVector2 seed;
 	int length;
-	PolyLine p;
+	PolyLine *p;
+	Streamline() {
+		p = new PolyLine;
+	}
 
 private:
 
