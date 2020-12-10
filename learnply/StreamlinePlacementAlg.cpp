@@ -12,6 +12,9 @@ float image[resolution][resolution];
 
 
 //iteratively alter the streamline set
-void optimizeStreamlines(PolyLine streamlines) {
+void optimizeStreamlines(StreamlineSet *set) {
 
 }
+
+
+

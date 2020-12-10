@@ -86,15 +86,16 @@ void display_selected_quad(Polyhedron* poly);
 
 
 float min_x = FLT_MAX, min_y = FLT_MAX, max_x = FLT_MIN, max_y = FLT_MIN;
-bool streamlines = false, singularities = false;
+bool streamlinesOn = false, singularities = false;
 bool foundStreamlines = false, foundSingleStreamline = false,  foundSingularities = false;
 
-PolyLine Streamlines;
+StreamlineSet streamlines;
 PolyLine SingleStreamline;
 std::vector<Vertex*> Singularities;
 
-void drawLineRecursive(Vertex* v, bool forward, int, bool);
 int recursiveDepth = 200;
+void placeStreamlinesGrid();
+void drawLineRecursive(Vertex* v, Streamline *, bool forward, int, bool);
 void findSingularities();
 void extractSingularitiesQuad(Quad*);
 void classifySingularity(Quad*, Vertex*);
@@ -216,8 +217,8 @@ Main program.
 int main(int argc, char* argv[])
 {
 	/*load mesh from ply file*/
-	FILE* this_file = fopen("../quadmesh_2D/new_vector_data/v1.ply", "r");
-	//FILE* this_file = fopen("../quadmesh_2D/scalar_data/sin_function.ply", "r");
+	//FILE* this_file = fopen("../quadmesh_2D/new_vector_data/v1.ply", "r");
+	FILE* this_file = fopen("../quadmesh_2D/scalar_data/sin_function.ply", "r");
 
 	poly = new Polyhedron(this_file);
 	fclose(this_file);
@@ -234,6 +235,19 @@ int main(int argc, char* argv[])
 		if (v->y > max_y)
 			max_y = v->y;
 	}
+
+	//~~~~ FINAL PROJECT - STREAMLINE OPTIMIZATION ~~~~
+
+	//Create a set of streamlines placed on a grid
+	placeStreamlinesGrid();
+
+	//send them to the algorithm for optimization
+	optimizeStreamlines(&streamlines);
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
 
 
 	/*initialize the mesh*/
@@ -554,12 +568,10 @@ void display_selected_vertex(Polyhedron* this_poly)
 	//draw the streamline using the recursive call
 	// draw both forward and backward
 	
-	if (foundSingleStreamline == false) {
-		drawLineRecursive(temp_v, true, recursiveDepth, true);
-		drawLineRecursive(temp_v, false, recursiveDepth, true);
-		foundSingleStreamline = true;		SingleStreamline.clear();
-		drawLineRecursive(temp_v, true, recursiveDepth, true);
-		drawLineRecursive(temp_v, false, recursiveDepth, true);
+	if (foundSingleStreamline == false) {	
+		SingleStreamline.clear();
+		drawLineRecursive(temp_v, nullptr, true, recursiveDepth, true);
+		drawLineRecursive(temp_v, nullptr, false, recursiveDepth, true);
 		foundSingleStreamline = true;
 	}
 	
@@ -567,13 +579,20 @@ void display_selected_vertex(Polyhedron* this_poly)
 
 }
 
-void drawAllStreamlines() {
+void placeStreamlinesGrid() {
 	int subdivisions = 5;
+	float x, y;
 	for (int i = 0; i < subdivisions + 1; i++) {
+		x = min_x + (float)i / (float)subdivisions * (max_x - min_x);
 		for (int j = 0; j < subdivisions + 1; j++) {
-			Vertex* v = getVertexAt(min_x + (float)i / (float)subdivisions * (max_x - min_x), min_y + (float)j / (float)subdivisions * (max_y - min_y));
-			drawLineRecursive(v, true, recursiveDepth, false);
-			drawLineRecursive(v, false, recursiveDepth, false);
+			y = min_y + (float)j / (float)subdivisions * (max_y - min_y);
+			Vertex* v = getVertexAt(x, y); 
+			Streamline thisLine;
+			thisLine.length = recursiveDepth * 2;
+			thisLine.seed.x = v->x;
+			thisLine.seed.y = v->y;
+			drawLineRecursive(v, &thisLine, true, recursiveDepth, false);
+			drawLineRecursive(v, &thisLine, false, recursiveDepth, false);
 		}
 	}
 	foundStreamlines = true;
@@ -581,7 +600,7 @@ void drawAllStreamlines() {
 }
 
 
-void drawLineRecursive(Vertex* v, bool forward, int depthRemaining, bool single) {
+void drawLineRecursive(Vertex* v, Streamline *s, bool forward, int depthRemaining, bool single) {
 
 	if (depthRemaining <= 0)
 		return;
@@ -602,10 +621,10 @@ void drawLineRecursive(Vertex* v, bool forward, int depthRemaining, bool single)
 	if (single)
 		SingleStreamline.push_back(newLine);
 	else
-		Streamlines.push_back(newLine);
+		s->p.push_back(newLine);
 
 	//continue the line from the next point
-	drawLineRecursive(next_v, forward, --depthRemaining, single);
+	drawLineRecursive(next_v, s, forward, --depthRemaining, single);
 
 }
 
@@ -1296,8 +1315,12 @@ void display(void)
 	display_selected_quad(poly);
 	CHECK_GL_ERROR();
 
-	if(streamlines)
-		drawPolyline(Streamlines, 1.5, 1, 0, 0);
+	if (streamlinesOn) {
+		for (int i = 0; i < streamlines.size(); i++) {
+			drawPolyline(streamlines[i].p, 1.5, 1, 0, 0);
+		}
+	}
+		
 
 	if(foundSingleStreamline)
 		drawPolyline(SingleStreamline, 1.5, 0, 0, 1);
@@ -1403,14 +1426,14 @@ void keyboard(unsigned char key, int x, int y) {
 		break;
 
 	case '6':
-		if (streamlines == false) {
-			streamlines = true;
+		if (streamlinesOn == false) {
+			streamlinesOn = true;
 			if (foundStreamlines == false)
-				drawAllStreamlines();
+				placeStreamlinesGrid();
 			foundStreamlines = true;
 		}
 		else {
-			streamlines = false;
+			streamlinesOn = false;
 		}
 		break;
 	case '7':

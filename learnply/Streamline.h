@@ -6,11 +6,13 @@ class Streamline {
 
 	
 public:
-	Vertex seed;
+	icVector2 seed;
 	int length;
-	std::vector<Vertex> points;
+	PolyLine p;
 
 private:
 
 
 };
+
+typedef std::vector<Streamline> StreamlineSet;
