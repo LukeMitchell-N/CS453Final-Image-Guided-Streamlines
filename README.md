@@ -1,5 +1,5 @@
 # CS453Final-Image-Guided-Streamlines
-Implementation of Turk and Banks' 1994 Image Guided Streamline Placement algorithm
+Implementation of Turk and Banks' 1996 Image Guided Streamline Placement algorithm
 http://cs.brown.edu/courses/cs237/2000/1999/turk.pdf
 
 
