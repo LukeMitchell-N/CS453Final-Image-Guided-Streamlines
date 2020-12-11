@@ -12,14 +12,14 @@ The algorithm uses a filtered image of the streamlines to create an energy value
 #include <time.h>
 
 //image variables
-#define			resolution 128
+#define			resolution 256
 float			buffer1[resolution][resolution], buffer2[resolution][resolution];
 float			(*image)[resolution][resolution] = &buffer1;
 float			(*test)[resolution][resolution] = &buffer2;
 float			(*swap)[resolution][resolution];
 
 //image energy variables
-#define			sufficientNumFails 1000
+#define			sufficientNumFails 2000
 #define			upperEnergyLimit 50
 float			targetCellEnergy = .75;
 float			targetEnergy = targetCellEnergy* resolution* resolution;
@@ -56,6 +56,7 @@ bool doRandomOperation(StreamlineSet* set);
 bool wasSuccess();
 bool tryAdjustRandomSeed(int);
 bool tryRandomPlacement(int);
+bool tryRandomDelete(int sl);
 
 
 
@@ -74,10 +75,9 @@ void optimizeStreamlines(StreamlineSet* set) {
 
 	int d = set->size();
 	streamlinesToImage(set, *image);
-		visualizeImage(*image);
-		float e = getEnergyFromImage(*image);
-		float normalizedEnergy = e / (resolution * resolution);
-		//printf("This image has a normalized energy value of %f", normalizedEnergy);
+		
+	//visualize the original image for fun:
+	visualizeImage(*image);
 
 	srand(time(NULL));
 	bool success;
@@ -190,18 +190,18 @@ void swapBuffers() {
 
 
 //operation functions
-
-
 bool doRandomOperation(StreamlineSet *set) {
 	int randStreamline = rand() % set->size();
 	copyImage(*image, *test);
 
-	int randomOperation = rand() % 2;
+	int randomOperation = rand() % 3;
 
 	if (randomOperation == 0)
 		return tryAdjustRandomSeed(randStreamline);
-	else
+	else if (randomOperation == 1)
 		return tryRandomPlacement(randStreamline);
+	else
+		return tryRandomDelete(randStreamline);
 }
 
 
@@ -247,7 +247,7 @@ bool tryAdjustRandomSeed(int sl) {
 
 	if(wasSuccess()){
 		streamlines.at(sl) = alteredLine;			//is this working?
-		printf(" - successfully moved line\n");
+		//printf(" - successfully moved line\n");
 		return true;							//success!
 	}
 	return false;
@@ -272,13 +272,26 @@ bool tryRandomPlacement(int sl) {
 	streamlineAlterImage(newLine.p, *test, true);					//add the influence of the new line to the test image
 
 	if(wasSuccess()){
-		printf(" - Successfully created new line");
+		//printf(" - Successfully created new line");
 		streamlines.push_back(newLine);
 		return true;							//success!
 	}
 	return false;
 	
 }
+
+bool tryRandomDelete(int sl) {
+
+	streamlineAlterImage(streamlines.at(sl).p, *test, false);
+
+	if (wasSuccess()) {
+		printf(" - Successfully deleted line");
+		streamlines.erase(streamlines.begin() +  sl);
+		return true;									//success!
+	}
+	return false;
+}
+
 
 
 //******************  Streamline placement functions *********************
@@ -383,7 +396,7 @@ Vertex* RKGetNextVertex(Vertex* initial, bool forward) {
 	Vertex* next_v;
 	float finaly = initial->y + 1.0 / 6.0 * timestep * (vec1.y + 2.0 * vec2.y + 2.0 * vec3.y + vec4.y);
 	float finalx = initial->x + 1.0 / 6.0 * timestep * (vec1.x + 2.0 * vec2.x + 2.0 * vec3.x + vec4.x);
-	//printf("This x: %f This y: %f \nNext x: %f Next y: %f \n\n", initial->x, initial->y, finalx, finaly);
+	////printf("This x: %f This y: %f \nNext x: %f Next y: %f \n\n", initial->x, initial->y, finalx, finaly);
 	if ((float)initial->x == finalx && (float)initial->y == finaly)
 		return nullptr;
 	return getVertexAt(finalx, finaly);
